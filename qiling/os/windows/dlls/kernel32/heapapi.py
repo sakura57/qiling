@@ -70,6 +70,36 @@ def hook_HeapAlloc(ql: Qiling, address: int, params):
 
     return ptr
 
+# DECLSPEC_ALLOCATOR LPVOID HeapReAlloc(
+#   HANDLE                 hHeap,
+#   DWORD                  dwFlags,
+#   _Frees_ptr_opt_ LPVOID lpMem,
+#   SIZE_T                 dwBytes
+# );
+@winsdkapi(cc=STDCALL, params={
+    'hHeap'   : HANDLE,
+    'dwFlags' : DWORD,
+    'lpMem': LPVOID,
+    'dwBytes' : SIZE_T
+})
+def hook_HeapReAlloc(ql: Qiling, address: int, params):
+    base = params["lpMem"]
+    newSize = params["dwBytes"]
+
+    oldSize = ql.os.heap.size(base)
+    oldData = bytes(ql.mem.read(base, oldSize))
+    
+    ql.os.heap.free(base)
+
+    if newSize < oldSize:
+        oldData = oldData[0:newSize]
+
+    newBase = ql.os.heap.alloc(newSize)
+    if newBase:
+        ql.mem.write(newBase, oldData)
+
+    return newBase
+
 # SIZE_T HeapSize(
 #   HANDLE  hHeap,
 #   DWORD   dwFlags,
