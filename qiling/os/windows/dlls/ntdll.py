@@ -453,3 +453,25 @@ def hook_wcsstr(ql: Qiling, address: int, params):
 def hook_CsrGetProcessId(ql: Qiling, address: int, params):
     pid = ql.os.profile["PROCESSES"].getint("csrss.exe", fallback=12345)
     return pid
+
+# NTSYSAPI PVOID RtlPcToFileHeader(
+#   [in]  PVOID PcValue,
+#   [out] PVOID *BaseOfImage
+# );
+@winsdkapi(cc=STDCALL, params={
+    'PcValue'    : PVOID,
+    'BaseOfImage': PVOID
+})
+def hook_RtlPcToFileHeader(ql: Qiling, address: int, params):
+    pc = params["PcValue"]
+    base_of_image_ptr = params["BaseOfImage"]
+
+    containing_image = ql.loader.find_containing_image(pc)
+
+    if containing_image:
+        base_addr = containing_image.base
+    else:
+        base_addr = 0
+
+    ql.mem.write_ptr(base_of_image_ptr, base_addr)
+    return base_addr
