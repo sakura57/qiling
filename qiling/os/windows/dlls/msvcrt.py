@@ -174,17 +174,6 @@ def hook_puts(ql: Qiling, address: int, params):
 def hook__cexit(ql: Qiling, address: int, params):
     pass
 
-# void __cdecl _initterm(
-#    PVFV *,
-#    PVFV *
-# );
-@winsdkapi(cc=CDECL, params={
-    'pfbegin' : POINTER,
-    'pfend'   : POINTER
-})
-def hook__initterm(ql: Qiling, address: int, params):
-    return 0
-
 # void exit(
 #    int const status
 # );
@@ -193,17 +182,6 @@ def hook__initterm(ql: Qiling, address: int, params):
 })
 def hook_exit(ql: Qiling, address: int, params):
     ql.emu_stop()
-
-# int __cdecl _initterm_e(
-#    PVFV *,
-#    PVFV *
-# );
-@winsdkapi(cc=CDECL, params={
-    'pfbegin' : POINTER,
-    'pfend'   : POINTER
-})
-def hook__initterm_e(ql: Qiling, address: int, params):
-    return 0
 
 # char***    __cdecl __p___argv (void);
 @winsdkapi(cc=CDECL, params={})
