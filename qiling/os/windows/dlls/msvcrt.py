@@ -498,6 +498,42 @@ def hook_malloc(ql: Qiling, address: int, params):
 
     return ql.os.heap.alloc(size)
 
+def __realloc(ql: Qiling, address: int, params):
+    block = params['block']
+    size = params['size']
+
+    if not block:
+        return ql.os.heap.alloc(size)
+    
+    if size == 0:
+        ql.os.heap.free(block)
+        return 0
+    
+    oldSize = ql.os.heap.size(block)
+    oldData = bytes(ql.mem.read(block, size))
+    ql.os.heap.free(block)
+
+    if size < oldSize:
+        oldData = oldData[0:size]
+
+    newBase = ql.os.heap.alloc(size)
+
+    if newBase:
+        ql.mem.write(newBase, oldData)
+
+    return newBase
+
+# void* __cdecl _realloc_base(
+#     void*  const block,
+#     size_t const size
+#     )
+@winsdkapi(cc=CDECL, params={
+    'block' : POINTER,
+    'size' : UINT
+})
+def hook__realloc_base(ql: Qiling, address: int, params):
+    return __realloc(ql, address, params)
+
 def __free(ql: Qiling, address: int, params):
     address = params['address']
 
