@@ -281,13 +281,6 @@ def hook_wprintf(ql: Qiling, address: int, params):
 
     return count
 
-# MSVCRT_FILE * CDECL MSVCRT___acrt_iob_func(unsigned idx)
-@winsdkapi(cc=CDECL, params={
-    'idx': UINT
-})
-def hook___acrt_iob_func(ql: Qiling, address: int, params):
-    return 0
-
 def __stdio_common_vfprintf(ql: Qiling, address: int, params, wstring: bool):
     format = params['_Format']
     arglist = params['_ArgList']
