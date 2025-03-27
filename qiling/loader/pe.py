@@ -79,6 +79,12 @@ class Process:
     export_symbols: MutableMapping[int, Dict[str, Any]]
     libcache: Optional[QlPeCache]
 
+    # maps image base to RVA of its function table
+    function_table_lookup: MutableMapping[int, int]
+
+    # maps image base to its list of function table entries
+    function_tables: MutableMapping[int, list]
+
     def __init__(self, ql: Qiling):
         self.ql = ql
 
@@ -105,6 +111,67 @@ class Process:
         vpath = ntpath.join(dirname, basename)
 
         return self.ql.os.path.virtual_to_host_path(vpath), basename.casefold()
+    
+    def init_function_tables(self, pe: pefile.PE, image_base: int):
+        """Parse function table data for the given PE file.
+        Only works for x64 images.
+
+        Args:
+            pe: the PE image whose function data should be parsed
+            image_base: the absolute address at which the image was loaded
+        """
+        if self.ql.arch.type == QL_ARCH.X8664:
+
+            # Check if the PE file has an exception directory
+            if hasattr(pe, 'DIRECTORY_ENTRY_EXCEPTION'):
+                exception_dir = pe.OPTIONAL_HEADER.DATA_DIRECTORY[
+                    pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_EXCEPTION']
+                ]
+                
+                self.function_table_lookup[image_base] = exception_dir.VirtualAddress
+
+                runtime_function_list = []
+
+                for _, exception_entry in enumerate(pe.DIRECTORY_ENTRY_EXCEPTION, start=1):
+                    runtime_function_list.append(exception_entry)
+
+                if self.function_tables.get(image_base) is None:
+                    self.function_tables[image_base] = []
+
+                self.function_tables[image_base].extend(runtime_function_list)
+
+                self.ql.log.debug(f'Parsed {len(runtime_function_list)} exception directory entries')
+
+            else:
+                self.ql.log.debug(f'Image has no exception directory; skipping exception data')
+
+    def lookup_function_entry(self, base_addr: int, control_pc: int):
+        """Look up a RUNTIME_FUNCTION entry and its index in a module's
+        function table, such that the given program counter falls within
+        the entry's begin and end range.
+
+        Args:
+            base_addr: The base address of the image whose exception directory to search.
+            control_pc: The program counter.
+
+        Returns:
+            A tuple (index, runtime_function)
+        """
+        function_table = self.function_tables[base_addr]
+
+        # Initiate a search of the function table for a RUNTIME_FUNCTION
+        # entry such that the provided PC falls within its start and end range.
+        for i, runtime_function in enumerate(function_table):
+
+            # Begin and end addresses exist in the entry as RVAs,
+            # convert them to absolute addresses.
+            begin_addr = base_addr + runtime_function.struct.BeginAddress
+            end_addr = base_addr + runtime_function.struct.EndAddress
+            
+            if begin_addr <= control_pc < end_addr:
+                return i, runtime_function
+
+        return None, None
 
     def load_dll(self, name: str, is_driver: bool = False) -> int:
         dll_path, dll_name = self.__get_path_elements(name)
@@ -194,6 +261,9 @@ class Process:
             if relocate:
                 with ShowProgress(self.ql.log, 0.1337):
                     dll.relocate_image(image_base)
+
+            # initialize the function tables only after possible relocation
+            self.init_function_tables(dll, image_base)
 
             data = bytearray(dll.get_memory_mapped_image())
             assert image_size >= len(data)
@@ -709,6 +779,8 @@ class QlLoaderPE(QlLoader, Process):
         self.export_symbols = {}
         self.import_address_table = {}
         self.ldr_list = []
+        self.function_tables = {}
+        self.function_table_lookup = {}
         self.pe_image_address = 0
         self.pe_image_size = 0
         self.dll_size = 0
@@ -840,6 +912,9 @@ class QlLoaderPE(QlLoader, Process):
 
                 # set up call frame for DllMain
                 self.ql.os.fcall.call_native(self.entry_point, args, None)
+
+            # Initialize the function tables
+            super().init_function_tables(pe, image_base)
 
         elif pe is None:
             self.ql.mem.map(self.entry_point, self.ql.os.code_ram_size, info="[shellcode]")
