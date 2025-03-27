@@ -17,6 +17,7 @@ from qiling.os.windows.handle import *
 from qiling.os.windows import structs
 from qiling.os.windows import utils
 
+from unicorn.x86_const import *
 
 # void *memcpy(
 #    void *dest,
@@ -475,3 +476,125 @@ def hook_RtlPcToFileHeader(ql: Qiling, address: int, params):
 
     ql.mem.write_ptr(base_of_image_ptr, base_addr)
     return base_addr
+
+# NTSYSAPI PRUNTIME_FUNCTION RtlLookupFunctionEntry(
+#   [in]  DWORD64               ControlPc,
+#   [out] PDWORD64              ImageBase,
+#   [out] PUNWIND_HISTORY_TABLE HistoryTable
+# );
+@winsdkapi(cc=STDCALL, params={
+    'ControlPc': PVOID,
+    'ImageBase': PVOID,
+    'HistoryTable': PVOID
+})
+def hook_RtlLookupFunctionEntry(ql: Qiling, address: int, params):
+    control_pc = params["ControlPc"]
+    image_base_ptr = params["ImageBase"]
+
+    # TODO: Make use of the history table to optimize this function.
+    # Alternatively, we could add caching to the loader, seeing as the
+    # loader is responsible for lookups in the function table.
+
+    # For simplicity, we are going to ignore the history table.
+    # history_table_ptr = params["HistoryTable"]
+
+    # This function should not be getting called on x86.
+    if ql.arch.type != QL_ARCH.X8664:
+        return QlErrorNotImplemented("RtlLookupFunctionEntry is not implemented for x86")
+
+    containing_image = ql.loader.find_containing_image(control_pc)
+
+    if containing_image:
+        base_addr = containing_image.base
+    else:
+        base_addr = 0
+
+        return 0
+    
+    # If we got a valid location to write the image base ptr,
+    # copy it there, and proceed.
+    if image_base_ptr != 0:
+        ql.mem.write_ptr(image_base_ptr, base_addr)
+
+    # Get the base address of the function table.
+    function_table_addr = base_addr + ql.loader.function_table_lookup[base_addr]
+
+    # Look up the RUNTIME_FUNCTION entry; we are interested in the index in the table
+    # so that we can compute the address.
+    runtime_function_idx, runtime_function = ql.loader.lookup_function_entry(base_addr, control_pc)
+
+    # If a suitable function entry was found,
+    # compute its address and return.
+    if runtime_function:
+        return function_table_addr + runtime_function_idx * 12    # sizeof(RUNTIME_FUNCTION)
+    
+    return 0
+
+# NTSYSAPI
+# PRUNTIME_FUNCTION
+# RtlLookupFunctionTable (
+#     IN PVOID ControlPc,
+#     OUT PVOID *ImageBase,
+#     OUT PULONG SizeOfTable
+# );
+@winsdkapi(cc=STDCALL, params={
+    'ControlPc': PVOID,
+    'ImageBase': PVOID,
+    'SizeOfTable': PVOID
+})
+def hook_RtlLookupFunctionTable(ql: Qiling, address: int, params):
+    control_pc = params["ControlPc"]
+    image_base_ptr = params["ImageBase"]
+    size_of_table_ptr = params["SizeOfTable"]
+
+    # This function should not be getting called on x86.
+    if ql.arch.type != QL_ARCH.X8664:
+        return QlErrorNotImplemented("RtlLookupFunctionTable is not implemented for x86")
+
+    containing_image = ql.loader.find_containing_image(control_pc)
+
+    if containing_image:
+        base_addr = containing_image.base
+    else:
+        base_addr = 0
+
+        return 0
+    
+    # If we got a valid location to write the image base ptr,
+    # copy it there, and proceed.
+    if image_base_ptr != 0:
+        ql.mem.write_ptr(image_base_ptr, base_addr)
+    
+    # If image base was 0, we are not going to find a valid function
+    # table anyway, so just return.
+    if base_addr == 0:
+        return 0
+    
+    # Look up the RVA of the function table.
+    function_table_rva = ql.loader.function_table_lookup[base_addr]
+
+    # The caller is expecting a pointer, so convert the RVA
+    # to an absolute address.
+    function_table_addr = int(base_addr + function_table_rva)
+    
+    # If a valid pointer for the size was provided,
+    # we want to figure out the size of the table.
+    if size_of_table_ptr != 0:
+        # Look up the function table from the loader,
+        # and get the number of entries.
+        function_table = ql.loader.function_tables[base_addr]
+
+        # compute the total size of the table
+        size_of_table = len(function_table) * 12    # sizeof(RUNTIME_FUNCTION)
+
+        # Write the size to memory at the provided pointer.
+        ql.mem.write_ptr(size_of_table_ptr, size_of_table, 4)
+    
+    return function_table_addr
+
+@winsdkapi(cc=STDCALL, params={})
+def hook_LdrControlFlowGuardEnforced(ql: Qiling, address: int, params):
+    # There are some checks in ntdll for whether CFG is enabled.
+    # We simply bypass these checks by returning 0.
+    # May not be necessary, but we do it just in case.
+    return 0
