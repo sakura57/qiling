@@ -74,7 +74,7 @@ def hook_SetErrorMode(ql: Qiling, address: int, params):
     'dwExceptionFlags'   : DWORD,
     'nNumberOfArguments' : DWORD,
     'lpArguments'        : POINTER
-})
+}, passthru=True)
 def hook_RaiseException(ql: Qiling, address: int, params):
     nNumberOfArguments = params['nNumberOfArguments']
     lpArguments = params['lpArguments']
