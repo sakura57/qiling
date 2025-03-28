@@ -29,6 +29,16 @@ if TYPE_CHECKING:
     from logging import Logger
     from qiling import Qiling
 
+class ForwardedExport:
+    def __init__(self,
+                 source_dll: str, source_ordinal: str, source_symbol: str,
+                 target_dll: str, target_symbol: str):
+        self.source_dll = source_dll
+        self.source_ordinal = source_ordinal
+        self.source_symbol = source_symbol
+        self.target_dll = target_dll
+        self.target_symbol = target_symbol
+
 
 class QlPeCacheEntry(NamedTuple):
     ba: int
@@ -84,6 +94,10 @@ class Process:
 
     # maps image base to its list of function table entries
     function_tables: MutableMapping[int, list]
+
+    # List of exports which have been forwarded from
+    # one DLL to another.
+    forwarded_exports: list[ForwardedExport]
 
     def __init__(self, ql: Qiling):
         self.ql = ql
@@ -172,6 +186,49 @@ class Process:
                 return i, runtime_function
 
         return None, None
+    
+    def resolve_forwarded_exports(self):
+        while self.forwarded_exports:
+            forwarded_export = self.forwarded_exports.pop()
+
+            source_dll = forwarded_export.source_dll
+            source_ordinal = forwarded_export.source_ordinal
+            source_symbol = forwarded_export.source_symbol
+            target_dll = forwarded_export.target_dll
+            target_symbol = forwarded_export.target_symbol
+
+            target_iat = self.import_address_table.get(target_dll)
+
+            if target_iat:
+                # If we have an existing entry in the process IAT for the code
+                # this entry forwards to, then we will point the symbol there
+                # rather than the symbol string in the exporter's data section.
+                forward_ea = target_iat.get(target_symbol)
+
+                if forward_ea:
+                    self.import_address_table[source_dll][source_symbol] = forward_ea
+                    self.import_address_table[source_dll][source_ordinal] = forward_ea
+
+                    # Register the new address as having the source symbol/ordinal.
+                    # This way, hooks on forward source symbols will function
+                    # correctly.
+
+                    self.import_symbols[forward_ea] = {
+                        'name'    : source_symbol,
+                        'ordinal' : source_ordinal,
+                        'dll'     : source_dll.split('.')[0]
+                    }
+
+                    # TODO: With the above code, hooks on functions which are
+                    # forward targets may not work correctly.
+                    # The most correct way to resolve this would be to add
+                    # support for addresses to be associated with multiple symbols.
+
+                    self.ql.log.debug(f"Forwarding symbol {source_dll}.{source_symbol} to {target_dll}.{target_symbol}: Resolved symbol to ({forward_ea:#x})")
+                else:
+                    self.ql.log.warning(f"Forwarding symbol {source_dll}.{source_symbol} to {target_dll}.{target_symbol}: Failed to resolve address")
+            else:
+                pass # If IAT was not found, it is probably a virtual library.
 
     def load_dll(self, name: str, is_driver: bool = False) -> int:
         dll_path, dll_name = self.__get_path_elements(name)
@@ -273,6 +330,31 @@ class Process:
             for sym in dll.DIRECTORY_ENTRY_EXPORT.symbols:
                 ea = image_base + sym.address
 
+                if sym.forwarder:
+                    # Some exports are forwarders, meaning they
+                    # actually refer to code in other libraries.
+                    # 
+                    # For example, calls to
+                    # kernel32.InterlockedPushEntrySList
+                    #   should be forwarded to
+                    # ntdll.RtlInterlockedPushEntrySList
+                    #
+                    # If we do not properly account for forwarders then
+                    # calls to these symbols will land in the exporter's
+                    # data section and cause a lot of problems.
+                    forward_str = sym.forwarder
+
+                    if b'.' in forward_str:
+                        target_dll_name, target_symbol_name = forward_str.split(b'.', 1)
+
+                        target_dll_filename = (target_dll_name.lower() + b'.dll').decode()
+
+                        # Remember the forwarded export for later.
+                        forwarded_export = ForwardedExport(dll_name, sym.ordinal, sym.name,
+                                                           target_dll_filename, target_symbol_name)
+
+                        self.forwarded_exports.append(forwarded_export)
+
                 import_symbols[ea] = {
                     'name'    : sym.name,
                     'ordinal' : sym.ordinal,
@@ -296,6 +378,8 @@ class Process:
         # Add dll to IAT
         self.import_address_table[dll_name] = import_table
         self.import_symbols.update(import_symbols)
+
+        self.resolve_forwarded_exports()
 
         dll_base = image_base
         dll_len = image_size
@@ -744,12 +828,14 @@ class QlLoaderPE(QlLoader, Process):
     def run(self):
         self.init_dlls = (
             'ntdll.dll',
-            'kernel32.dll',
+            'kernelbase.dll', # kernel32 forwards some exports to kernelbase
+            'kernel32.dll',   # for efficiency, load kernelbase first
             'user32.dll'
         )
 
         self.sys_dlls = (
             'ntdll.dll',
+            'kernelbase.dll',
             'kernel32.dll',
             'mscoree.dll',
             'ucrtbase.dll'
@@ -781,6 +867,7 @@ class QlLoaderPE(QlLoader, Process):
         self.ldr_list = []
         self.function_tables = {}
         self.function_table_lookup = {}
+        self.forwarded_exports = []
         self.pe_image_address = 0
         self.pe_image_size = 0
         self.dll_size = 0
