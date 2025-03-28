@@ -522,7 +522,7 @@ def hook_RtlLookupFunctionEntry(ql: Qiling, address: int, params):
 
     # This function should not be getting called on x86.
     if ql.arch.type != QL_ARCH.X8664:
-        return QlErrorNotImplemented("RtlLookupFunctionEntry is not implemented for x86")
+        raise QlErrorNotImplemented("RtlLookupFunctionEntry is not implemented for x86")
 
     containing_image = ql.loader.find_containing_image(control_pc)
 
@@ -571,7 +571,7 @@ def hook_RtlLookupFunctionTable(ql: Qiling, address: int, params):
 
     # This function should not be getting called on x86.
     if ql.arch.type != QL_ARCH.X8664:
-        return QlErrorNotImplemented("RtlLookupFunctionTable is not implemented for x86")
+        raise QlErrorNotImplemented("RtlLookupFunctionTable is not implemented for x86")
 
     containing_image = ql.loader.find_containing_image(control_pc)
 
