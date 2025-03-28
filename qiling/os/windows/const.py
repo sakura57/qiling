@@ -638,6 +638,7 @@ ProcessProtectionInformation = 61
 ProcessDebugObjectHandle = 30
 ProcessDebugFlags = 31
 ProcessExecuteFlags = 34
+ProcessCookie = 36
 ProcessImageInformation = 37
 ProcessMitigationPolicy = 52
 ProcessFaultInformation = 63

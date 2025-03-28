@@ -40,6 +40,7 @@ def hook_memcpy(ql: Qiling, address: int, params):
     return dest
 
 def _QueryInformationProcess(ql: Qiling, address: int, params):
+    handle = params["ProcessHandle"]
     flag = params["ProcessInformationClass"]
     obuf_ptr = params["ProcessInformation"]
     obuf_len = params['ProcessInformationLength']
@@ -69,6 +70,27 @@ def _QueryInformationProcess(ql: Qiling, address: int, params):
 
         res_data = bytes(pci_obj)
 
+    
+    elif flag == ProcessCookie:
+        hCurrentProcess = {
+            QL_ARCH.X86  : 0xFFFFFFFF,
+            QL_ARCH.X8664: 0xFFFFFFFFFFFFFFFF
+        }[ql.arch.type]
+
+        if handle != hCurrentProcess:
+            # If a process attempts to query the cookie of another
+            # process, then QueryInformationProcess returns an error.
+            return STATUS_INVALID_PARAMETER
+
+        # TODO: Change this to something else,
+        # maybe a static randomly generated value.
+        res_data = ql.pack32(0x00000001)
+
+        if obuf_len != len(res_data):
+            # If the buffer length is not ULONG size
+            # then QueryInformationProcess returns an error.
+            return STATUS_INFO_LENGTH_MISMATCH
+    
     else:
         # TODO: support more info class ("flag") values
         ql.log.info(f'QueryInformationProcess: no implementation for info class {flag:#04x}')
