@@ -435,8 +435,8 @@ class Process:
         # the blacklist may be revisited from time to time to see if any of the file
         # can be safely unlisted.
         blacklist = {
-            32 : ('gdi32.dll',),
-            64 : ('gdi32.dll',)
+            32 : ('gdi32.dll','user32.dll',),
+            64 : ('gdi32.dll','user32.dll',)
         }[self.ql.arch.bits]
 
         if dll_name in blacklist:
