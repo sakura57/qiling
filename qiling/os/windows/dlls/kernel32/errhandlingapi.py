@@ -44,15 +44,6 @@ def hook_GetLastError(ql: Qiling, address: int, params):
 def hook_SetLastError(ql: Qiling, address: int, params):
     ql.os.last_error = params['dwErrCode']
 
-# LONG UnhandledExceptionFilter(
-#   _EXCEPTION_POINTERS *ExceptionInfo
-# );
-@winsdkapi(cc=STDCALL, params={
-    'ExceptionInfo' : POINTER
-})
-def hook_UnhandledExceptionFilter(ql: Qiling, address: int, params):
-    return 1
-
 # UINT SetErrorMode(
 #   UINT uMode
 # );
@@ -62,33 +53,6 @@ def hook_UnhandledExceptionFilter(ql: Qiling, address: int, params):
 def hook_SetErrorMode(ql: Qiling, address: int, params):
     # TODO maybe this need a better implementation
     return 0
-
-# __analysis_noreturn VOID RaiseException(
-#   DWORD           dwExceptionCode,
-#   DWORD           dwExceptionFlags,
-#   DWORD           nNumberOfArguments,
-#   const ULONG_PTR *lpArguments
-# );
-@winsdkapi(cc=STDCALL, params={
-    'dwExceptionCode'    : DWORD,
-    'dwExceptionFlags'   : DWORD,
-    'nNumberOfArguments' : DWORD,
-    'lpArguments'        : POINTER
-}, passthru=True)
-def hook_RaiseException(ql: Qiling, address: int, params):
-    nNumberOfArguments = params['nNumberOfArguments']
-    lpArguments = params['lpArguments']
-
-    handle = ql.os.handle_manager.search("TopLevelExceptionHandler")
-
-    if handle is None:
-        ql.log.warning(f'RaiseException: top level exception handler not found')
-        return
-
-    exception_handler = handle.obj
-    args = [(PARAM_INTN, ql.mem.read_ptr(lpArguments + i * ql.arch.pointersize)) for i in range(nNumberOfArguments)] if lpArguments else []
-
-    ql.os.fcall.call_native(exception_handler, args, None)
 
 # PVOID AddVectoredExceptionHandler(
 #   ULONG                       First,

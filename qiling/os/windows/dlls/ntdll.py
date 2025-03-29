@@ -620,3 +620,93 @@ def hook_LdrControlFlowGuardEnforced(ql: Qiling, address: int, params):
     # We simply bypass these checks by returning 0.
     # May not be necessary, but we do it just in case.
     return 0
+
+# NTSYSAPI
+# NTSTATUS
+# ZwRaiseException (
+#     IN PEXCEPTION_RECORD ExceptionRecord,
+#     IN PCONTEXT ContextRecord,
+#     IN BOOLEAN FirstChance
+# );
+@winsdkapi(cc=STDCALL, params={
+    'ExceptionRecord': PVOID,
+    'ContextRecord': PVOID,
+    'FirstChance': BOOLEAN
+})
+def hook_ZwRaiseException(ql: Qiling, address: int, params):
+    exception_ptr = params['ExceptionRecord']
+    context_ptr = params['ContextRecord']
+    first_chance = params['FirstChance']
+
+    # In Windows, an unhandled exception triggers the
+    # top-level unhandled exception filter, after which the process
+    # is terminated and error reporting services are called.
+    # Regardless of whether an unhandled exception filter is present,
+    # the process terminates with the same error code that was raised.
+
+    # Our strategy for this hook is to forward second-chance exceptions
+    # to the registered unhandled exception filter, if one exists.
+
+    if first_chance:
+        raise QlErrorNotImplemented("ZwRaiseException is not implemented for first-chance exceptions.")
+
+    if exception_ptr:
+        exception_code = ql.mem.read_ptr(exception_ptr, 4) # exception code is always DWORD
+        ql.log.debug(f"[ZwRaiseException] ExceptionCode: 0x{exception_code:08X}")
+    else:
+        ql.log.debug("[ZwRaiseException] ExceptionRecord is NULL")
+
+    ql.log.debug(f"  ContextRecord: 0x{context_ptr:016X}")
+    ql.log.debug(f"  FirstChance: {first_chance}")
+
+    handle = ql.os.handle_manager.search("TopLevelExceptionHandler")
+
+    if handle is None:
+        ql.log.debug(f'[ZwRaiseException] No top-level exception filter was found.')
+        ql.log.info(f'The process exited with code 0x{exception_code:08X}.')
+
+        ql.os.exit_code = exception_code
+        
+        ql.emu_stop()
+
+    ret_addr = ql.stack_read(0)
+
+    exception_filter = handle.obj
+
+    # allocate some memory for the EXCEPTION_POINTERS struct
+    epointers_struct = structs.make_exception_pointers(ql.arch.bits)
+    exception_pointers_ptr = ql.os.heap.alloc(epointers_struct.sizeof())
+
+    with epointers_struct.ref(ql.mem, exception_pointers_ptr) as epointers_obj:
+        epointers_obj.ExceptionRecord = exception_ptr
+        epointers_obj.ContextRecord = context_ptr
+
+    exception_filter = handle.obj
+    ql.log.debug(f'[ZwRaiseException] Resuming execution at the top-level exception filter at 0x{exception_filter:08X}.')
+
+    # Hack: We are going to fake that the caller of ZwRaiseException
+    # actually called the unhandled exception filter instead.
+
+    # We will create a hook which will be triggered when the unhandled
+    # exception filter returns, so that we may terminate execution.
+    def __post_exception_filter(ql: Qiling):
+        # Free the exception pointers struct we allocated earlier.
+        # Might not be needed, since we are going to terminate the process
+        # soon, but we might as well free it.
+        ql.os.heap.free(exception_pointers_ptr)
+
+        ql.log.debug(f'[ZwRaiseException] Returned from unhandled exception filter at 0x{exception_filter:08X}.')
+        ql.log.info(f'The process exited with code 0x{exception_code:08X}.')
+
+        ql.os.exit_code = exception_code
+
+        ql.emu_stop()
+
+    ql.hook_address(__post_exception_filter, ret_addr)
+
+    exception_filter_args = [(POINTER, exception_pointers_ptr)]
+
+    # Resume execution at the registered unhandled exception filter.
+    # If a program is using a custom unhandled exception filter as an anti-debugging
+    # trick, then the exception filter might not return.
+    ql.os.fcall.call_native(exception_filter, exception_filter_args, ret_addr)
