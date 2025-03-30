@@ -632,7 +632,7 @@ def hook_LdrControlFlowGuardEnforced(ql: Qiling, address: int, params):
     'ExceptionRecord': PVOID,
     'ContextRecord': PVOID,
     'FirstChance': BOOLEAN
-})
+}, passthru=True)
 def hook_ZwRaiseException(ql: Qiling, address: int, params):
     exception_ptr = params['ExceptionRecord']
     context_ptr = params['ContextRecord']
