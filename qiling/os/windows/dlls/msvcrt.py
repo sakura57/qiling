@@ -10,7 +10,7 @@ from qiling import Qiling
 from qiling.exception import QlErrorNotImplemented
 from qiling.os.const import *
 from qiling.os.windows.fncc import *
-from qiling.os.windows.const import LOCALE
+from qiling.os.windows.const import *
 from qiling.os.windows.handle import Handle
 
 # void __set_app_type (
@@ -651,3 +651,18 @@ def hook__time64(ql: Qiling, address: int, params):
         ql.mem.write_ptr(dst, time_wasted, 8)
 
     return time_wasted
+
+# void abort( void );
+@winsdkapi(cc=CDECL, params={})
+def hook_abort(ql: Qiling, address: int, params):
+    # During testing, it was found that programs terminating abnormally
+    # via abort() terminated with exit code=STATUS_STACK_BUFFER_OVERRUN.
+    # According to Microsoft's devblog, this does not necessarily mean
+    # that a stack buffer overrun occurred.
+    # Rather, it can indicate abnormal program termination in a variety of
+    # situations, including abort().
+    # https://devblogs.microsoft.com/oldnewthing/20190108-00/?p=100655
+    # 
+    ql.os.exit_code = STATUS_STACK_BUFFER_OVERRUN
+
+    ql.emu_stop()
