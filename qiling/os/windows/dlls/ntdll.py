@@ -638,6 +638,17 @@ def hook_ZwRaiseException(ql: Qiling, address: int, params):
     context_ptr = params['ContextRecord']
     first_chance = params['FirstChance']
 
+    # The native ZwRaiseException simply uses a syscall to start
+    # the kernel exception dispatcher. However, Windows syscalls
+    # are not really working in Qiling right now.
+    # For now, we just provide a workaround for second-chance
+    # exceptions to work.
+    # TODO: Get some kind of solution for kernel exception
+    # dispatching. This is also needed for first-chance exceptions
+    # to work properly on 32-bit Windows.
+    if first_chance:
+        raise QlErrorNotImplemented("ZwRaiseException is not implemented for first-chance exceptions.")
+
     # In Windows, an unhandled exception triggers the
     # top-level unhandled exception filter, after which the process
     # is terminated and error reporting services are called.
@@ -646,9 +657,6 @@ def hook_ZwRaiseException(ql: Qiling, address: int, params):
 
     # Our strategy for this hook is to forward second-chance exceptions
     # to the registered unhandled exception filter, if one exists.
-
-    if first_chance:
-        raise QlErrorNotImplemented("ZwRaiseException is not implemented for first-chance exceptions.")
 
     if exception_ptr:
         exception_code = ql.mem.read_ptr(exception_ptr, 4) # exception code is always DWORD
@@ -668,6 +676,7 @@ def hook_ZwRaiseException(ql: Qiling, address: int, params):
         ql.os.exit_code = exception_code
         
         ql.emu_stop()
+        return
 
     ret_addr = ql.stack_read(0)
 
