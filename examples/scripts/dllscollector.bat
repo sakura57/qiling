@@ -94,6 +94,9 @@ CALL :collect_dll32 wininet.dll
 CALL :collect_dll32 winmm.dll
 CALL :collect_dll32 ws2_32.dll
 CALL :collect_dll32 wsock32.dll
+CALL :collect_dll32 msvcp140.dll
+CALL :collect_dll32 msvcp140_1.dll
+CALL :collect_dll32 msvcp140_2.dll
 
 CALL :collect_dll32 downlevel\api-ms-win-core-fibers-l1-1-1.dll
 CALL :collect_dll32 downlevel\api-ms-win-core-localization-l1-2-1.dll
