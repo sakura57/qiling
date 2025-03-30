@@ -61,10 +61,7 @@ class GDTManager:
         # setup GDT by writing to GDTR
         ql.arch.regs.write(UC_X86_REG_GDTR, (0, base, limit, 0x0))
 
-        if ql.arch.type == QL_ARCH.X8664:
-            self.is_long_mode = True
-        else:
-            self.is_long_mode = False
+        self.is_long_mode = ql.arch.type is QL_ARCH.X8664
 
         self.array = GDTArray(ql.mem, base, num_entries)
 
