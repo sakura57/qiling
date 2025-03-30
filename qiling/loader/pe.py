@@ -10,7 +10,8 @@ import pefile
 import pickle
 import secrets
 import ntpath
-from typing import TYPE_CHECKING, Any, Dict, MutableMapping, NamedTuple, Optional, Mapping, Sequence, Tuple, Union
+from collections import namedtuple
+from typing import TYPE_CHECKING, Any, Dict, List, MutableMapping, NamedTuple, Optional, Mapping, Sequence, Tuple, Union
 
 from unicorn import UcError
 from unicorn.x86_const import UC_X86_REG_CR4, UC_X86_REG_CR8
@@ -29,15 +30,10 @@ if TYPE_CHECKING:
     from logging import Logger
     from qiling import Qiling
 
-class ForwardedExport:
-    def __init__(self,
-                 source_dll: str, source_ordinal: str, source_symbol: str,
-                 target_dll: str, target_symbol: str):
-        self.source_dll = source_dll
-        self.source_ordinal = source_ordinal
-        self.source_symbol = source_symbol
-        self.target_dll = target_dll
-        self.target_symbol = target_symbol
+ForwardedExport = namedtuple('ForwardedExport', [
+    'source_dll', 'source_ordinal', 'source_symbol',
+    'target_dll', 'target_symbol'
+])
 
 
 class QlPeCacheEntry(NamedTuple):
@@ -90,14 +86,14 @@ class Process:
     libcache: Optional[QlPeCache]
 
     # maps image base to RVA of its function table
-    function_table_lookup: MutableMapping[int, int]
+    function_table_lookup: Dict[int, int]
 
     # maps image base to its list of function table entries
-    function_tables: MutableMapping[int, list]
+    function_tables: MutableMapping[int, List]
 
     # List of exports which have been forwarded from
     # one DLL to another.
-    forwarded_exports: list[ForwardedExport]
+    forwarded_exports: List[ForwardedExport]
 
     def __init__(self, ql: Qiling):
         self.ql = ql
@@ -128,13 +124,13 @@ class Process:
     
     def init_function_tables(self, pe: pefile.PE, image_base: int):
         """Parse function table data for the given PE file.
-        Only works for x64 images.
+        Only really relevant for non-x86 images.
 
         Args:
             pe: the PE image whose function data should be parsed
             image_base: the absolute address at which the image was loaded
         """
-        if self.ql.arch.type == QL_ARCH.X8664:
+        if self.ql.arch.type is not QL_ARCH.X86:
 
             # Check if the PE file has an exception directory
             if hasattr(pe, 'DIRECTORY_ENTRY_EXCEPTION'):
@@ -144,12 +140,9 @@ class Process:
                 
                 self.function_table_lookup[image_base] = exception_dir.VirtualAddress
 
-                runtime_function_list = []
+                runtime_function_list = list(pe.DIRECTORY_ENTRY_EXCEPTION)
 
-                for _, exception_entry in enumerate(pe.DIRECTORY_ENTRY_EXCEPTION, start=1):
-                    runtime_function_list.append(exception_entry)
-
-                if self.function_tables.get(image_base) is None:
+                if image_base not in self.function_tables:
                     self.function_tables[image_base] = []
 
                 self.function_tables[image_base].extend(runtime_function_list)
@@ -175,17 +168,9 @@ class Process:
 
         # Initiate a search of the function table for a RUNTIME_FUNCTION
         # entry such that the provided PC falls within its start and end range.
-        for i, runtime_function in enumerate(function_table):
-
-            # Begin and end addresses exist in the entry as RVAs,
-            # convert them to absolute addresses.
-            begin_addr = base_addr + runtime_function.struct.BeginAddress
-            end_addr = base_addr + runtime_function.struct.EndAddress
-            
-            if begin_addr <= control_pc < end_addr:
-                return i, runtime_function
-
-        return None, None
+        return next(((i, rtfunc) for i, rtfunc in enumerate(function_table)
+                     if rtfunc.struct.BeginAddress <= control_pc - base_addr < rtfunc.struct.EndAddress),
+                     (None, None))
     
     def resolve_forwarded_exports(self):
         while self.forwarded_exports:
