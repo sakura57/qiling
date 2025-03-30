@@ -131,6 +131,9 @@ CALL :collect_dll64 win32u.dll
 CALL :collect_dll64 winhttp.dll
 CALL :collect_dll64 wininet.dll
 CALL :collect_dll64 ws2_32.dll
+CALL :collect_dll64 msvcp140.dll
+CALL :collect_dll64 msvcp140_1.dll
+CALL :collect_dll64 msvcp140_2.dll
 
 CALL :collect_dll64 downlevel\api-ms-win-crt-heap-l1-1-0.dll
 CALL :collect_dll64 downlevel\api-ms-win-crt-locale-l1-1-0.dll
