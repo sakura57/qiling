@@ -72,10 +72,7 @@ def _QueryInformationProcess(ql: Qiling, address: int, params):
 
     
     elif flag == ProcessCookie:
-        hCurrentProcess = {
-            QL_ARCH.X86  : 0xFFFFFFFF,
-            QL_ARCH.X8664: 0xFFFFFFFFFFFFFFFF
-        }[ql.arch.type]
+        hCurrentProcess = (1 << ql.arch.bits) - 1
 
         if handle != hCurrentProcess:
             # If a process attempts to query the cookie of another
@@ -491,10 +488,7 @@ def hook_RtlPcToFileHeader(ql: Qiling, address: int, params):
 
     containing_image = ql.loader.find_containing_image(pc)
 
-    if containing_image:
-        base_addr = containing_image.base
-    else:
-        base_addr = 0
+    base_addr = containing_image.base if containing_image else 0
 
     ql.mem.write_ptr(base_of_image_ptr, base_addr)
     return base_addr
@@ -521,7 +515,7 @@ def hook_RtlLookupFunctionEntry(ql: Qiling, address: int, params):
     # history_table_ptr = params["HistoryTable"]
 
     # This function should not be getting called on x86.
-    if ql.arch.type != QL_ARCH.X8664:
+    if ql.arch.type is QL_ARCH.X86:
         raise QlErrorNotImplemented("RtlLookupFunctionEntry is not implemented for x86")
 
     containing_image = ql.loader.find_containing_image(control_pc)
