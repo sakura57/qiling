@@ -713,4 +713,9 @@ def hook_ZwRaiseException(ql: Qiling, address: int, params):
     # Resume execution at the registered unhandled exception filter.
     # If a program is using a custom unhandled exception filter as an anti-debugging
     # trick, then the exception filter might not return.
+    
+    # TODO: This relies on the hook being marked 'passthru' so that Qiling
+    # doesn't rewind after it returns. However, this is not entirely intended
+    # behavior of passthru, so this is a bit of a hack. Maybe find some
+    # way to rewrite without passthru.
     ql.os.fcall.call_native(exception_filter, exception_filter_args, ret_addr)
