@@ -493,6 +493,36 @@ def hook_RtlPcToFileHeader(ql: Qiling, address: int, params):
     ql.mem.write_ptr(base_of_image_ptr, base_addr)
     return base_addr
 
+def _FindImageBaseAndFunctionTable(ql: Qiling, control_pc: int, image_base_ptr: int):
+    """
+    Helper function to locate a containing image for `control_pc` as well as its
+    function table, while writing the image base to `image_base_ptr` (if non-zero).
+    Returns:
+        (base_addr, function_table_addr)
+    if no image is found, otherwise
+        (0, 0)
+    """
+    containing_image = ql.loader.find_containing_image(control_pc)
+
+    if containing_image:
+        base_addr = containing_image.base
+    else:
+        base_addr = 0
+
+    # Write base address to the ImageBase pointer, if provided
+    if image_base_ptr != 0:
+        ql.mem.write_ptr(image_base_ptr, base_addr)
+
+    # If we don’t have a valid base, abort now
+    if base_addr == 0:
+        return 0, 0
+
+    # Look up the function-table RVA and compute the absolute address
+    function_table_rva = ql.loader.function_table_lookup.get(base_addr)
+    function_table_addr = base_addr + function_table_rva if function_table_rva else 0
+
+    return base_addr, function_table_addr
+
 # NTSYSAPI PRUNTIME_FUNCTION RtlLookupFunctionEntry(
 #   [in]  DWORD64               ControlPc,
 #   [out] PDWORD64              ImageBase,
@@ -518,22 +548,11 @@ def hook_RtlLookupFunctionEntry(ql: Qiling, address: int, params):
     if ql.arch.type is QL_ARCH.X86:
         raise QlErrorNotImplemented("RtlLookupFunctionEntry is not implemented for x86")
 
-    containing_image = ql.loader.find_containing_image(control_pc)
+    base_addr, function_table_addr = _FindImageBaseAndFunctionTable(ql, control_pc, image_base_ptr)
 
-    if containing_image:
-        base_addr = containing_image.base
-    else:
-        base_addr = 0
-
+    # If no function table was found, abort.
+    if function_table_addr == 0:
         return 0
-    
-    # If we got a valid location to write the image base ptr,
-    # copy it there, and proceed.
-    if image_base_ptr != 0:
-        ql.mem.write_ptr(image_base_ptr, base_addr)
-
-    # Get the base address of the function table.
-    function_table_addr = base_addr + ql.loader.function_table_lookup[base_addr]
 
     # Look up the RUNTIME_FUNCTION entry; we are interested in the index in the table
     # so that we can compute the address.
@@ -564,34 +583,16 @@ def hook_RtlLookupFunctionTable(ql: Qiling, address: int, params):
     size_of_table_ptr = params["SizeOfTable"]
 
     # This function should not be getting called on x86.
-    if ql.arch.type != QL_ARCH.X8664:
+    if ql.arch.type is QL_ARCH.X86:
         raise QlErrorNotImplemented("RtlLookupFunctionTable is not implemented for x86")
 
-    containing_image = ql.loader.find_containing_image(control_pc)
+    base_addr, function_table_addr = _FindImageBaseAndFunctionTable(ql, control_pc, image_base_ptr)
 
-    if containing_image:
-        base_addr = containing_image.base
-    else:
-        base_addr = 0
+    # If no function table was found, abort.
+    if function_table_addr == 0:
+        ql.mem.write_ptr(size_of_table_ptr, 0, 4)
 
         return 0
-    
-    # If we got a valid location to write the image base ptr,
-    # copy it there, and proceed.
-    if image_base_ptr != 0:
-        ql.mem.write_ptr(image_base_ptr, base_addr)
-    
-    # If image base was 0, we are not going to find a valid function
-    # table anyway, so just return.
-    if base_addr == 0:
-        return 0
-    
-    # Look up the RVA of the function table.
-    function_table_rva = ql.loader.function_table_lookup[base_addr]
-
-    # The caller is expecting a pointer, so convert the RVA
-    # to an absolute address.
-    function_table_addr = int(base_addr + function_table_rva)
     
     # If a valid pointer for the size was provided,
     # we want to figure out the size of the table.
