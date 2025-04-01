@@ -719,3 +719,40 @@ def hook_ZwRaiseException(ql: Qiling, address: int, params):
     # behavior of passthru, so this is a bit of a hack. Maybe find some
     # way to rewrite without passthru.
     ql.os.fcall.call_native(exception_filter, exception_filter_args, ret_addr)
+
+# NTSTATUS EtwNotificationRegister(
+#   LPCGUID   ProviderGuid,
+#   ULONG     Type,
+#   PVOID     CallbackFunction,
+#   PVOID     CallbackContext,
+#   PVOID*    RegistrationHandle
+# );
+@winsdkapi(cc=STDCALL, params={
+    'ProviderGuid': PVOID,
+    'Type': DWORD,
+    'CallbackFunction': PVOID,
+    'CallbackContext': PVOID,
+    'RegistrationHandle': PVOID
+})
+def hook_EtwNotificationRegister(ql: Qiling, address: int, params):
+    reg_handle_ptr    = params['RegistrationHandle']
+
+    # It is very important to have a hook for this function
+    # because it is called by some Windows DLLs (sechost.dll,
+    # advapi32.dll) during initialization when the global
+    # CRT lock is held.
+    # If a DllMain aborts here, then the global CRT lock is never
+    # freed and any attempt to lock the global CRT lock *anywhere*
+    # will crash us.
+
+    # TODO: See if a more thorough implementation
+    # is needed for this function.
+
+    # For now, just create a dummy handle, and return it.
+    handle = Handle()
+    ql.os.handle_manager.append(handle)
+
+    if reg_handle_ptr:
+        ql.mem.write_ptr(reg_handle_ptr, handle.id)
+
+    return STATUS_SUCCESS
