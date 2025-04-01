@@ -182,38 +182,47 @@ class Process:
             target_dll = forwarded_export.target_dll
             target_symbol = forwarded_export.target_symbol
 
+            if not source_symbol:
+                # Some DLLs (shlwapi.dll) have a bunch of forwarded
+                # exports with ordinals but no symbols.
+                # These are really annoying to deal with, but they are
+                # used extremely rarely, so we will ignore them.
+                continue
+
             target_iat = self.import_address_table.get(target_dll)
 
-            if target_iat:
-                # If we have an existing entry in the process IAT for the code
-                # this entry forwards to, then we will point the symbol there
-                # rather than the symbol string in the exporter's data section.
-                forward_ea = target_iat.get(target_symbol)
+            if not target_iat:
+                # If IAT was not found, it is probably a virtual library.
+                continue
 
-                if forward_ea:
-                    self.import_address_table[source_dll][source_symbol] = forward_ea
-                    self.import_address_table[source_dll][source_ordinal] = forward_ea
+            # If we have an existing entry in the process IAT for the code
+            # this entry forwards to, then we will point the symbol there
+            # rather than the symbol string in the exporter's data section.
+            forward_ea = target_iat.get(target_symbol)
 
-                    # Register the new address as having the source symbol/ordinal.
-                    # This way, hooks on forward source symbols will function
-                    # correctly.
+            if not forward_ea:
+                self.ql.log.warning(f"Forwarding symbol {source_dll}.{source_symbol} to {target_dll}.{target_symbol}: Failed to resolve address")
+                continue
 
-                    self.import_symbols[forward_ea] = {
-                        'name'    : source_symbol,
-                        'ordinal' : source_ordinal,
-                        'dll'     : source_dll.split('.')[0]
-                    }
+            self.import_address_table[source_dll][source_symbol] = forward_ea
+            self.import_address_table[source_dll][source_ordinal] = forward_ea
 
-                    # TODO: With the above code, hooks on functions which are
-                    # forward targets may not work correctly.
-                    # The most correct way to resolve this would be to add
-                    # support for addresses to be associated with multiple symbols.
+            # Register the new address as having the source symbol/ordinal.
+            # This way, hooks on forward source symbols will function
+            # correctly.
 
-                    self.ql.log.debug(f"Forwarding symbol {source_dll}.{source_symbol} to {target_dll}.{target_symbol}: Resolved symbol to ({forward_ea:#x})")
-                else:
-                    self.ql.log.warning(f"Forwarding symbol {source_dll}.{source_symbol} to {target_dll}.{target_symbol}: Failed to resolve address")
-            else:
-                pass # If IAT was not found, it is probably a virtual library.
+            self.import_symbols[forward_ea] = {
+                'name'    : source_symbol,
+                'ordinal' : source_ordinal,
+                'dll'     : source_dll.split('.')[0]
+            }
+
+            # TODO: With the above code, hooks on functions which are
+            # forward targets may not work correctly.
+            # The most correct way to resolve this would be to add
+            # support for addresses to be associated with multiple symbols.
+
+            self.ql.log.debug(f"Forwarding symbol {source_dll}.{source_symbol} to {target_dll}.{target_symbol}: Resolved symbol to ({forward_ea:#x})")
 
     def load_dll(self, name: str, is_driver: bool = False) -> int:
         dll_path, dll_name = self.__get_path_elements(name)
