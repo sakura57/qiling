@@ -30,10 +30,12 @@ if TYPE_CHECKING:
     from logging import Logger
     from qiling import Qiling
 
-ForwardedExport = namedtuple('ForwardedExport', [
-    'source_dll', 'source_ordinal', 'source_symbol',
-    'target_dll', 'target_symbol'
-])
+class ForwardedExport(NamedTuple):
+    source_dll: str
+    source_ordinal: str
+    source_symbol: str
+    target_dll: str
+    target_symbol: str
 
 
 class QlPeCacheEntry(NamedTuple):
