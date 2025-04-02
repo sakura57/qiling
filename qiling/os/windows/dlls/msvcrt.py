@@ -539,6 +539,27 @@ def hook__onexit(ql: Qiling, address: int, params):
 
     return addr
 
+# _onexit_t __dllonexit(
+#    _onexit_t func,
+#    _PVFV **  pbegin,
+#    _PVFV **  pend
+#    );
+@winsdkapi(cc=STDCALL, params={
+    'function': POINTER,
+    'pbegin': POINTER,
+    'pend': POINTER
+})
+def hook___dllonexit(ql: Qiling, address: int, params):
+    function = params['function']
+
+    if function:
+        addr = ql.os.heap.alloc(ql.arch.pointersize)
+        ql.mem.write_ptr(addr, function)
+
+        return addr
+    
+    return 0
+
 # void *memset(
 #    void *dest,
 #    int c,
