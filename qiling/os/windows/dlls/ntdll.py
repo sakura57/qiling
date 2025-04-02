@@ -756,3 +756,145 @@ def hook_EtwNotificationRegister(ql: Qiling, address: int, params):
         ql.mem.write_ptr(reg_handle_ptr, handle.id)
 
     return STATUS_SUCCESS
+
+# NTSYSAPI
+# VOID RtlRaiseException(
+#   PEXCEPTION_RECORD ExceptionRecord
+# );
+@winsdkapi(cc=STDCALL, params={
+    'ExceptionRecord': PVOID
+}, passthru=True)
+def hook_RtlRaiseException(ql: Qiling, address: int, params):
+    return
+
+# NTSYSAPI
+# PRUNTIME_FUNCTION RtlVirtualUnwind(
+#   DWORD  HandlerType,
+#   DWORD64 ImageBase,
+#   DWORD64 ControlPc,
+#   PRUNTIME_FUNCTION FunctionEntry,
+#   PCONTEXT ContextRecord,
+#   PVOID* HandlerData,
+#   PDWORD64 EstablisherFrame,
+#   PKNONVOLATILE_CONTEXT_POINTERS ContextPointers
+# );
+@winsdkapi(cc=STDCALL, params={
+    'HandlerType': DWORD,
+    'ImageBase': PVOID,
+    'ControlPc': PVOID,
+    'FunctionEntry': PVOID,
+    'ContextRecord': PVOID,
+    'HandlerData': PVOID,
+    'EstablisherFrame': PVOID,
+    'ContextPointers': PVOID
+}, passthru=True)
+def hook_RtlVirtualUnwind(ql: Qiling, address: int, params):
+    return
+
+# NTSYSAPI
+# VOID RtlUnwindEx(
+#   PVOID               TargetFrame,
+#   PVOID               TargetIp,
+#   PEXCEPTION_RECORD   ExceptionRecord,
+#   PVOID               ReturnValue,
+#   PCONTEXT            OriginalContext,
+#   PUNWIND_HISTORY_TABLE HistoryTable
+# );
+@winsdkapi(cc=STDCALL, params={
+    'TargetFrame': PVOID,
+    'TargetIp': PVOID,
+    'ExceptionRecord': PVOID,
+    'ReturnValue': PVOID,
+    'OriginalContext': PVOID,
+    'HistoryTable': PVOID
+}, passthru=True)
+def hook_RtlUnwindEx(ql: Qiling, address: int, params):
+    return
+
+# NTSYSAPI
+# BOOLEAN RtlDispatchException(
+#   PEXCEPTION_RECORD ExceptionRecord,
+#   PCONTEXT ContextRecord
+# );
+@winsdkapi(cc=STDCALL, params={
+    'ExceptionRecord': PVOID,
+    'ContextRecord': PVOID
+}, passthru=True)
+def hook_RtlDispatchException(ql: Qiling, address: int, params):
+    return
+
+# NTSYSAPI
+# VOID RtlRestoreContext(
+#   PCONTEXT ContextRecord,
+#   PEXCEPTION_RECORD ExceptionRecord
+# );
+@winsdkapi(cc=CDECL, params={
+    'ContextRecord': PVOID,
+    'ExceptionRecord': PVOID
+}, passthru=True)
+def hook_RtlRestoreContext(ql: Qiling, address: int, params):
+    return
+
+# NTSYSAPI
+# VOID RtlCaptureContext(
+#   PCONTEXT ContextRecord
+# );
+@winsdkapi(cc=STDCALL, params={
+    'ContextRecord': PVOID
+}, passthru=True)
+def hook_RtlCaptureContext(ql: Qiling, address: int, params):
+    return
+
+# NTSYSAPI
+# VOID RtlCaptureContext2(
+#   PCONTEXT ContextRecord,
+#   ULONG Flags
+# );
+@winsdkapi(cc=STDCALL, params={
+    'ContextRecord': PVOID,
+    'Flags': DWORD
+}, passthru=True)
+def hook_RtlCaptureContext2(ql: Qiling, address: int, params):
+    return
+
+# NTSYSAPI
+# NTSTATUS RtlInitializeExtendedContext2(
+#   USHORT Version,
+#   USHORT ContextFlags,
+#   ULONG ExtensionCount,
+#   ULONG *ExtensionSizes,
+#   ULONG BufferSize,
+#   PVOID Buffer,
+#   PCONTEXT Context,
+#   ULONG *LengthReturned
+# );
+@winsdkapi(cc=STDCALL, params={
+    'Version': WORD,
+    'ContextFlags': WORD,
+    'ExtensionCount': DWORD,
+    'ExtensionSizes': PVOID,
+    'BufferSize': DWORD,
+    'Buffer': PVOID,
+    'Context': PVOID,
+    'LengthReturned': PVOID
+}, passthru=True)
+def hook_RtlInitializeExtendedContext2(ql: Qiling, address: int, params):
+    return
+
+# NTSYSAPI
+# NTSTATUS RtlGetExtendedContextLength2(
+#   USHORT Version,
+#   USHORT ContextFlags,
+#   ULONG ExtensionCount,
+#   ULONG *ExtensionSizes,
+#   PULONG Length
+# );
+@winsdkapi(cc=STDCALL, params={
+    'Version': WORD,
+    'ContextFlags': WORD,
+    'ExtensionCount': DWORD,
+    'ExtensionSizes': PVOID,
+    'Length': PVOID
+}, passthru=True)
+def hook_RtlGetExtendedContextLength2(ql: Qiling, address: int, params):
+    return
